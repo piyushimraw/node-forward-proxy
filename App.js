@@ -2,7 +2,7 @@ var http = require('http');
 var url = require('url');
 var request = require('request');
 
-http.createServer(onRequest).listen(3000);
+http.createServer(onRequest).listen(80);
 
 const { Transform } = require('stream');
 
