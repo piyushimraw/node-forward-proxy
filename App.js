@@ -1,35 +1,64 @@
-var http = require('http');
 var url = require('url');
-var request = require('request');
+const axios = require('axios');
+const cheerio = require('cheerio');
+const { Readable } = require('stream');
+const _ = require('lodash');
 
-http.createServer(onRequest).listen(80);
+const express = require('express');
+const app = express();
+const port = 3000;
 
-const { Transform } = require('stream');
+app.get('/', (request, response) => {
+  var queryData = url.parse(request.url, true).query;
+  if (queryData.url) {
+    const { url } = queryData;
+    const transform = transfomers(url);
+    axios
+      .get(queryData.url)
+      .then((res) => {
+        const data = res.data;
+        const headers = res.headers;
+        const transformedHTML = transform(data);
 
-const transfomers = (url) => {
-  return new Transform({
-    transform(chunk, encoding, callback) {
-      this.push(chunk);
-      this.on('end', () => {
-        console.log({ chunk, url });
-        callback();
+        _.forEach(headers, (value, key) => {
+          response.setHeader(key, value);
+        });
+        response.send(transformedHTML);
+      })
+      .catch((err) => {
+        response.send(err);
       });
-    },
-  });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Example app listening at http://localhost:${port}`);
+});
+
+const proxyUrl = `http://localhost:3000/`;
+
+const transformUrl = (baseUrl, contentUrl) => {
+  return `${proxyUrl}?url=${baseUrl}${contentUrl}`;
 };
 
-function onRequest(req, res) {
-  var queryData = url.parse(req.url, true).query;
-  if (queryData.url) {
-    const transformer = transfomers(queryData.url);
-    request({
-      url: queryData.url,
-    })
-      .on('error', function (e) {
-        res.end(e);
-      })
-      .pipe(res);
-  } else {
-    res.end('no url found');
-  }
-}
+const transfomers = (url) => (htmlstring) => {
+  let $ = cheerio.load(htmlstring);
+
+  $('a').each((_, element) => {
+    var oldhref = element.attribs.href;
+    if (oldhref) {
+      var newHref = transformUrl(url, oldhref);
+      element.attribs.href = newHref;
+    }
+  });
+
+  $('link').each((_, element) => {
+    var oldhref = element.attribs.href;
+    if (oldhref) {
+      var newHref = transformUrl(url, oldhref);
+      element.attribs.href = newHref;
+    }
+  });
+
+  return $.html();
+};
